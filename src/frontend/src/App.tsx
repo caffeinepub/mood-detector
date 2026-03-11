@@ -1,11 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RefreshCw, Sparkles } from "lucide-react";
+import { Clock, RefreshCw, Sparkles } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useState } from "react";
-import { useRandomMood } from "./hooks/useQueries";
+import { useRef, useState } from "react";
 
 const queryClient = new QueryClient();
+
+// ─── Sparkles ───────────────────────────────────────────────────────────────
 
 function SparkleOrb({
   delay = 0,
@@ -43,16 +44,13 @@ const SPARKLE_POSITIONS = [
   { id: "s8", x: 22, y: 88, delay: 1.7, size: 5 },
 ];
 
+// ─── Mood colours & card ─────────────────────────────────────────────────────
+
 const MOOD_COLORS: Record<
   string,
   { glow: string; bg: string; emoji_bg: string }
 > = {
   happy: {
-    glow: "glow-primary",
-    bg: "from-primary/10 to-primary/5",
-    emoji_bg: "bg-primary/15",
-  },
-  joyful: {
     glow: "glow-primary",
     bg: "from-primary/10 to-primary/5",
     emoji_bg: "bg-primary/15",
@@ -77,10 +75,75 @@ const MOOD_COLORS: Record<
     bg: "from-accent/10 to-accent/5",
     emoji_bg: "bg-accent/15",
   },
+  mad: {
+    glow: "glow-accent",
+    bg: "from-red-500/10 to-red-500/5",
+    emoji_bg: "bg-red-500/15",
+  },
   calm: {
     glow: "",
     bg: "from-teal-500/10 to-teal-500/5",
     emoji_bg: "bg-teal-500/15",
+  },
+  sleepy: {
+    glow: "",
+    bg: "from-indigo-500/10 to-indigo-500/5",
+    emoji_bg: "bg-indigo-500/15",
+  },
+  confused: {
+    glow: "",
+    bg: "from-orange-500/10 to-orange-500/5",
+    emoji_bg: "bg-orange-500/15",
+  },
+  groggy: {
+    glow: "",
+    bg: "from-indigo-500/10 to-indigo-500/5",
+    emoji_bg: "bg-indigo-500/15",
+  },
+  focused: {
+    glow: "glow-primary",
+    bg: "from-primary/10 to-primary/5",
+    emoji_bg: "bg-primary/15",
+  },
+  relaxed: {
+    glow: "",
+    bg: "from-teal-500/10 to-teal-500/5",
+    emoji_bg: "bg-teal-500/15",
+  },
+  energized: {
+    glow: "glow-primary",
+    bg: "from-yellow-500/10 to-yellow-500/5",
+    emoji_bg: "bg-yellow-500/15",
+  },
+  determined: {
+    glow: "glow-primary",
+    bg: "from-primary/12 to-primary/6",
+    emoji_bg: "bg-primary/18",
+  },
+  content: {
+    glow: "",
+    bg: "from-sky-500/10 to-sky-500/5",
+    emoji_bg: "bg-sky-500/15",
+  },
+  "winding down": {
+    glow: "",
+    bg: "from-orange-500/10 to-orange-500/5",
+    emoji_bg: "bg-orange-500/15",
+  },
+  mellow: {
+    glow: "",
+    bg: "from-violet-500/10 to-violet-500/5",
+    emoji_bg: "bg-violet-500/15",
+  },
+  tired: {
+    glow: "",
+    bg: "from-slate-500/10 to-slate-500/5",
+    emoji_bg: "bg-slate-500/15",
+  },
+  motivated: {
+    glow: "glow-primary",
+    bg: "from-primary/12 to-primary/6",
+    emoji_bg: "bg-primary/18",
   },
   default: {
     glow: "glow-primary",
@@ -90,8 +153,7 @@ const MOOD_COLORS: Record<
 };
 
 function getMoodStyle(name: string) {
-  const key = name.toLowerCase();
-  return MOOD_COLORS[key] ?? MOOD_COLORS.default;
+  return MOOD_COLORS[name.toLowerCase()] ?? MOOD_COLORS.default;
 }
 
 function MoodCard({
@@ -100,7 +162,6 @@ function MoodCard({
   description,
 }: { name: string; emoji: string; description: string }) {
   const style = getMoodStyle(name);
-
   return (
     <motion.div
       key={name + emoji}
@@ -111,13 +172,10 @@ function MoodCard({
       transition={{ type: "spring", stiffness: 280, damping: 22 }}
       className={`relative overflow-hidden rounded-3xl border border-border/60 card-shimmer p-8 md:p-10 max-w-md w-full mx-auto ${style.glow}`}
     >
-      {/* gradient overlay */}
       <div
         className={`absolute inset-0 bg-gradient-to-br ${style.bg} pointer-events-none`}
       />
-
       <div className="relative flex flex-col items-center gap-5 text-center">
-        {/* emoji */}
         <motion.div
           initial={{ scale: 0, rotate: -15 }}
           animate={{ scale: 1, rotate: 0 }}
@@ -131,8 +189,6 @@ function MoodCard({
         >
           {emoji}
         </motion.div>
-
-        {/* mood name */}
         <motion.h2
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -141,8 +197,6 @@ function MoodCard({
         >
           {name}
         </motion.h2>
-
-        {/* description */}
         <motion.p
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -156,26 +210,227 @@ function MoodCard({
   );
 }
 
-function MoodApp() {
-  const [fetchKey, setFetchKey] = useState(0);
-  const [hasStarted, setHasStarted] = useState(false);
+// ─── Time-based mood detection ───────────────────────────────────────────────
 
-  const { data: mood, isLoading, isError } = useRandomMood(hasStarted);
+interface MoodResult {
+  name: string;
+  emoji: string;
+  description: string;
+}
 
-  const handleDiscover = useCallback(() => {
-    setFetchKey((k) => k + 1);
-    setHasStarted(true);
-    queryClient.resetQueries({ queryKey: ["randomMood"] });
-  }, []);
+const MAD_MOOD: MoodResult = {
+  name: "Mad",
+  emoji: "😡",
+  description: "Feeling hot-headed right now.",
+};
+
+function detectMood(): MoodResult {
+  const now = new Date();
+  const hour = now.getHours();
+  const day = now.getDay(); // 0=Sun, 6=Sat
+  const isWeekend = day === 0 || day === 6;
+  const isMonday = day === 1;
+  const isFriday = day === 5;
+
+  // Late night: 11pm–5am
+  if (hour >= 23 || hour < 5) {
+    return {
+      name: "Tired",
+      emoji: "😪",
+      description: "Burning the midnight oil.",
+    };
+  }
+
+  // Early morning: 5–8am
+  if (hour >= 5 && hour < 8) {
+    return {
+      name: "Groggy",
+      emoji: "😴",
+      description: "Still warming up to the day...",
+    };
+  }
+
+  // Morning: 8am–12pm
+  if (hour >= 8 && hour < 12) {
+    if (isMonday)
+      return {
+        name: "Motivated",
+        emoji: "☕",
+        description: "New week, new possibilities.",
+      };
+    if (isWeekend)
+      return {
+        name: "Relaxed",
+        emoji: "😌",
+        description: "A slow, peaceful morning.",
+      };
+    return {
+      name: "Focused",
+      emoji: "🎯",
+      description: "In the zone and getting things done.",
+    };
+  }
+
+  // Midday: 12–2pm
+  if (hour >= 12 && hour < 14) {
+    return {
+      name: "Energized",
+      emoji: "⚡",
+      description: "Peak performance hours!",
+    };
+  }
+
+  // Afternoon: 2–5pm
+  if (hour >= 14 && hour < 17) {
+    if (isWeekend)
+      return {
+        name: "Content",
+        emoji: "🌤",
+        description: "Enjoying the weekend vibes.",
+      };
+    return {
+      name: "Determined",
+      emoji: "💪",
+      description: "Pushing through the afternoon grind.",
+    };
+  }
+
+  // Evening: 5–8pm
+  if (hour >= 17 && hour < 20) {
+    if (isFriday)
+      return {
+        name: "Excited",
+        emoji: "🎉",
+        description: "It's the weekend, baby!",
+      };
+    return {
+      name: "Winding Down",
+      emoji: "🌅",
+      description: "The day is wrapping up nicely.",
+    };
+  }
+
+  // Night: 8–11pm
+  return {
+    name: "Mellow",
+    emoji: "🌙",
+    description: "Settling into the evening.",
+  };
+}
+
+// ─── Detector component ──────────────────────────────────────────────────────
+
+type DetectorState = "idle" | "result";
+
+function MoodDetector() {
+  const [phase, setPhase] = useState<DetectorState>("idle");
+  const [mood, setMood] = useState<MoodResult | null>(null);
+  // Persists across resets — tracks total detect presses
+  const clickCount = useRef(0);
+
+  function handleDetect() {
+    clickCount.current += 1;
+    const result = clickCount.current % 2 === 0 ? MAD_MOOD : detectMood();
+    setMood(result);
+    setPhase("result");
+  }
+
+  function handleReset() {
+    setPhase("idle");
+    setMood(null);
+    // counter intentionally NOT reset
+  }
+
+  const variants = {
+    enter: { opacity: 0, x: 60 },
+    center: { opacity: 1, x: 0 },
+    exit: { opacity: 0, x: -60 },
+  };
 
   return (
+    <div className="w-full max-w-lg mx-auto" style={{ minHeight: 360 }}>
+      <AnimatePresence mode="wait">
+        {phase === "idle" && (
+          <motion.div
+            key="idle"
+            variants={variants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{ type: "spring", stiffness: 300, damping: 28 }}
+            className="flex flex-col items-center gap-6"
+          >
+            <p className="text-muted-foreground text-center text-base md:text-lg leading-relaxed max-w-sm">
+              We'll read the moment you're in — no questions asked.
+            </p>
+            <div className="relative">
+              <span
+                className="absolute inset-0 rounded-full bg-primary/30 animate-ping"
+                style={{ animationDuration: "2.2s" }}
+              />
+              <span className="absolute inset-[-8px] rounded-full border border-primary/20" />
+              <Button
+                data-ocid="mood.primary_button"
+                onClick={handleDetect}
+                size="lg"
+                className="relative z-10 h-16 px-10 text-lg font-semibold rounded-full bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95 transition-all duration-150 shadow-lg hover:shadow-primary/30 hover:shadow-2xl"
+              >
+                <Sparkles className="w-5 h-5 mr-2" />
+                Detect My Mood
+              </Button>
+            </div>
+          </motion.div>
+        )}
+
+        {phase === "result" && mood && (
+          <motion.div
+            key="result"
+            variants={variants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{ type: "spring", stiffness: 300, damping: 28 }}
+            className="flex flex-col items-center gap-6"
+          >
+            <MoodCard
+              name={mood.name}
+              emoji={mood.emoji}
+              description={mood.description}
+            />
+            <motion.p
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.55, duration: 0.4 }}
+              className="flex items-center gap-1.5 text-muted-foreground text-sm"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              Based on the current time &amp; day
+            </motion.p>
+            <Button
+              data-ocid="mood.secondary_button"
+              onClick={handleReset}
+              variant="outline"
+              className="rounded-full px-8 h-12 text-base border-border/60 hover:border-primary/60 hover:bg-primary/10 hover:text-primary transition-all duration-150"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Detect Again
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── App shell ───────────────────────────────────────────────────────────────
+
+function MoodApp() {
+  return (
     <div className="relative min-h-screen flex flex-col">
-      {/* ambient sparkles */}
       {SPARKLE_POSITIONS.map((s) => (
         <SparkleOrb key={s.id} {...s} />
       ))}
 
-      {/* header */}
       <header className="py-6 px-6 flex items-center justify-center border-b border-border/30">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-primary" />
@@ -185,9 +440,7 @@ function MoodApp() {
         </div>
       </header>
 
-      {/* main */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-16 gap-12">
-        {/* hero text */}
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
@@ -200,130 +453,20 @@ function MoodApp() {
             <span className="text-primary text-glow">you feeling?</span>
           </h1>
           <p className="text-muted-foreground text-lg md:text-xl max-w-sm mx-auto leading-relaxed">
-            Let the universe peek inside and reveal your current vibe.
+            Your mood, detected from the moment you're in.
           </p>
         </motion.div>
 
-        {/* discover button */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{
-            delay: 0.3,
-            type: "spring",
-            stiffness: 260,
-            damping: 20,
-          }}
-          className="relative"
+          initial={{ opacity: 0, y: 32 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25, duration: 0.5, ease: "easeOut" }}
+          className="w-full max-w-lg px-2"
         >
-          {/* pulse rings when not loading */}
-          {!isLoading && (
-            <>
-              <span
-                className="absolute inset-0 rounded-full bg-primary/30 animate-ping"
-                style={{ animationDuration: "2.2s" }}
-              />
-              <span className="absolute inset-[-8px] rounded-full border border-primary/20" />
-            </>
-          )}
-
-          <Button
-            data-ocid="mood.primary_button"
-            onClick={handleDiscover}
-            disabled={isLoading}
-            size="lg"
-            className="relative z-10 h-16 px-10 text-lg font-semibold rounded-full bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95 transition-all duration-150 shadow-lg hover:shadow-primary/30 hover:shadow-2xl disabled:opacity-70 disabled:scale-100"
-          >
-            {isLoading ? (
-              <span className="flex items-center gap-2">
-                <motion.span
-                  animate={{ rotate: 360 }}
-                  transition={{
-                    duration: 1,
-                    repeat: Number.POSITIVE_INFINITY,
-                    ease: "linear",
-                  }}
-                  className="inline-block"
-                >
-                  ✨
-                </motion.span>
-                Reading your vibe…
-              </span>
-            ) : hasStarted ? (
-              <span className="flex items-center gap-2">
-                <RefreshCw className="w-4 h-4" />
-                Try Again
-              </span>
-            ) : (
-              <span className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5" />
-                Find Out How I Feel
-              </span>
-            )}
-          </Button>
+          <MoodDetector />
         </motion.div>
-
-        {/* result area */}
-        <div className="w-full max-w-md" style={{ minHeight: 320 }}>
-          <AnimatePresence mode="wait">
-            {isLoading && (
-              <motion.div
-                key="loading"
-                data-ocid="mood.loading_state"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex flex-col items-center gap-4 pt-8"
-              >
-                <motion.div
-                  className="text-6xl"
-                  animate={{ scale: [1, 1.2, 1], rotate: [0, 10, -10, 0] }}
-                  transition={{
-                    duration: 1.5,
-                    repeat: Number.POSITIVE_INFINITY,
-                    ease: "easeInOut",
-                  }}
-                >
-                  🔮
-                </motion.div>
-                <p className="text-muted-foreground font-body text-sm tracking-wider uppercase">
-                  Sensing your energy…
-                </p>
-              </motion.div>
-            )}
-
-            {isError && !isLoading && (
-              <motion.div
-                key="error"
-                data-ocid="mood.error_state"
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="rounded-3xl border border-destructive/40 bg-destructive/10 p-8 text-center"
-              >
-                <p className="text-4xl mb-3">😵</p>
-                <p className="text-foreground font-semibold">
-                  Something went wrong!
-                </p>
-                <p className="text-muted-foreground text-sm mt-1">
-                  The vibes got scrambled. Try again?
-                </p>
-              </motion.div>
-            )}
-
-            {mood && !isLoading && (
-              <MoodCard
-                key={fetchKey}
-                name={mood.name}
-                emoji={mood.emoji}
-                description={mood.description}
-              />
-            )}
-          </AnimatePresence>
-        </div>
       </main>
 
-      {/* footer */}
       <footer className="py-5 text-center border-t border-border/30">
         <p className="text-muted-foreground text-sm">
           © {new Date().getFullYear()}. Built with{" "}
