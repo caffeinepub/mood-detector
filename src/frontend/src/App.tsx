@@ -80,6 +80,11 @@ const MOOD_COLORS: Record<
     bg: "from-red-500/10 to-red-500/5",
     emoji_bg: "bg-red-500/15",
   },
+  "you're the one": {
+    glow: "glow-primary",
+    bg: "from-pink-500/15 to-rose-500/8",
+    emoji_bg: "bg-pink-500/20",
+  },
   calm: {
     glow: "",
     bg: "from-teal-500/10 to-teal-500/5",
@@ -224,6 +229,12 @@ const MAD_MOOD: MoodResult = {
   description: "Feeling hot-headed right now.",
 };
 
+const YOU_ARE_THE_ONE_MOOD: MoodResult = {
+  name: "You're the One",
+  emoji: "🫵",
+  description: "Out of everyone — it's you.",
+};
+
 function detectMood(): MoodResult {
   const now = new Date();
   const hour = now.getHours();
@@ -330,7 +341,15 @@ function MoodDetector() {
 
   function handleDetect() {
     clickCount.current += 1;
-    const result = clickCount.current % 2 === 0 ? MAD_MOOD : detectMood();
+    let result: MoodResult;
+    if (clickCount.current % 2 === 0) {
+      result = MAD_MOOD;
+    } else if (Math.random() < 0.15) {
+      // ~15% chance on odd presses
+      result = YOU_ARE_THE_ONE_MOOD;
+    } else {
+      result = detectMood();
+    }
     setMood(result);
     setPhase("result");
   }
